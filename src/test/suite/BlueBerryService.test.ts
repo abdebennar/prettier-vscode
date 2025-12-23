@@ -1,10 +1,12 @@
 import * as assert from "assert";
 import { ExtensionContext } from "vscode";
 import { BlueBerryService } from "../../BlueBerryService.js";
+import { LoggingService } from "../../LoggingService.js";
 
 describe("BlueBerryService", () => {
   let service: BlueBerryService;
   let mockSecretStorage: ExtensionContext["secrets"];
+  let mockLoggingService: LoggingService;
   let storage: Map<string, string>;
   let getCalls: string[];
   let storeCalls: Array<{ key: string; value: string }>;
@@ -33,7 +35,15 @@ describe("BlueBerryService", () => {
       onDidChange: (() => ({ dispose: () => {} })) as any,
     };
 
-    service = new BlueBerryService(mockSecretStorage);
+    // Create a mock LoggingService
+    mockLoggingService = {
+      logInfo: () => {},
+      logWarning: () => {},
+      logError: () => {},
+      logDebug: () => {},
+    } as any;
+
+    service = new BlueBerryService(mockSecretStorage, mockLoggingService);
   });
 
   afterEach(async () => {

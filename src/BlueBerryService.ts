@@ -1,5 +1,6 @@
 import { window, workspace, ExtensionContext } from "vscode";
 import { spawn } from "child_process";
+import { LoggingService } from "./LoggingService.js";
 
 export class BlueBerryService {
   private active = false;
@@ -15,7 +16,10 @@ export class BlueBerryService {
   private readonly XINPUT_CMD = "xinput";
   private readonly REQUIRED_BINARIES = ["ft_lock", "xdotool", "xset", "xinput"];
 
-  constructor(secretStorage: ExtensionContext["secrets"]) {
+  constructor(
+    secretStorage: ExtensionContext["secrets"],
+    private loggingService: LoggingService,
+  ) {
     this.secretStorage = secretStorage;
   }
 

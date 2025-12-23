@@ -85,7 +85,10 @@ export async function activate(context: ExtensionContext) {
   if (process.env.BROWSER_ENV !== "true") {
     try {
       const { BlueBerryService } = await import("./BlueBerryService.js");
-      const blueBerryService = new BlueBerryService(context.secrets);
+      const blueBerryService = new BlueBerryService(
+        context.secrets,
+        loggingService,
+      );
       const blueBerryStartCommand = commands.registerCommand(
         "blueberry.start",
         () => blueBerryService.start(),
