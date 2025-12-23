@@ -72,12 +72,43 @@ export async function activate(context: ExtensionContext) {
     editService.forceFormatDocument,
   );
 
-  context.subscriptions.push(
+  const subscriptions = [
     statusBar,
     editService,
     createConfigFileCommand,
     openOutputCommand,
     forceFormatDocumentCommand,
     ...editService.registerDisposables(),
-  );
+  ];
+
+  // Initialize BlueBerry service (only in Node.js environment, not in browser)
+  if (process.env.BROWSER_ENV !== "true") {
+    try {
+      const { BlueBerryService } = await import("./BlueBerryService.js");
+      const blueBerryService = new BlueBerryService(context.secrets);
+      const blueBerryStartCommand = commands.registerCommand(
+        "blueberry.start",
+        () => blueBerryService.start(),
+      );
+      const blueBerryStopCommand = commands.registerCommand(
+        "blueberry.stop",
+        () => blueBerryService.stop(),
+      );
+      const blueBerrySetSecretCommand = commands.registerCommand(
+        "blueberry.setSecret",
+        () => blueBerryService.setSecret(),
+      );
+      subscriptions.push(
+        blueBerryStartCommand,
+        blueBerryStopCommand,
+        blueBerrySetSecretCommand,
+      );
+    } catch {
+      loggingService.logWarning(
+        "BlueBerry service not available (requires Node.js environment)",
+      );
+    }
+  }
+
+  context.subscriptions.push(...subscriptions);
 }

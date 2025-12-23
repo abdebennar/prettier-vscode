@@ -405,6 +405,21 @@
           "default": "end",
           "markdownDescription": "%ext.config.experimentalOperatorPosition%",
           "scope": "language-overridable"
+        },
+        "blueberry.napTimeS": {
+          "type": "number",
+          "default": 1800,
+          "description": "Seconds for long nap time (default: 1800s / 30min)"
+        },
+        "blueberry.weakTimeS": {
+          "type": "number",
+          "default": 0.5,
+          "description": "Seconds for short wake time (default: 0.5s)"
+        },
+        "blueberry.stopAfterCycles": {
+          "type": "number",
+          "default": 0,
+          "description": "Repeat napTimeS x times (0 = infinite)"
         }
       }
     },
@@ -464,6 +479,18 @@
         "command": "prettier.forceFormatDocument",
         "title": "%ext.command.forceFormatDocument.title%",
         "when": "editorFocus"
+      },
+      {
+        "command": "blueberry.start",
+        "title": "Start BlueBerry"
+      },
+      {
+        "command": "blueberry.stop",
+        "title": "Stop BlueBerry"
+      },
+      {
+        "command": "blueberry.setSecret",
+        "title": "Set BlueBerry Secret"
       }
     ]
   },
