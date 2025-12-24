@@ -420,6 +420,11 @@
           "type": "number",
           "default": 0,
           "description": "Repeat napTimeS x times (0 = infinite)"
+        },
+        "blueberry.dryRun": {
+          "type": "boolean",
+          "default": true,
+          "description": "When enabled, commands are logged to a terminal instead of being executed (default: true for safety)"
         }
       }
     },
@@ -491,6 +496,10 @@
       {
         "command": "blueberry.setSecret",
         "title": "Set BlueBerry Secret"
+      },
+      {
+        "command": "blueberry.clearSecret",
+        "title": "Clear BlueBerry Secret"
       }
     ]
   },

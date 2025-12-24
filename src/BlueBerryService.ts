@@ -5,7 +5,6 @@ import { LoggingService } from "./LoggingService.js";
 export class BlueBerryService {
   private active = false;
   private secretStorage: ExtensionContext["secrets"];
-  private readonly DEFAULT_SECRET = "";
   private currentLoopTask: Promise<void> | null = null;
   private requiredBinariesChecked = false;
 
@@ -23,11 +22,27 @@ export class BlueBerryService {
     this.secretStorage = secretStorage;
   }
 
+  private logCommand(cmd: string, args: string[] = []): void {
+    const fullCommand = `${cmd} ${args.join(" ")}`;
+    this.loggingService.logInfo(`[BlueBerry] Would execute: ${fullCommand}`);
+  }
+
+  private isDryRun(): boolean {
+    const config = workspace.getConfiguration("blueberry");
+    return config.get<boolean>("dryRun") ?? true; // Default to true for safety
+  }
+
   private sleep(ms: number): Promise<void> {
     return new Promise((res) => setTimeout(res, ms));
   }
 
   private async checkBinaryExists(binaryName: string): Promise<boolean> {
+    if (this.isDryRun()) {
+      this.logCommand("which", [binaryName]);
+      // In dry-run mode, assume binaries exist to allow testing
+      return true;
+    }
+
     try {
       const result = await this.execAndWaitForOutput("which", [binaryName]);
       return result.trim().length > 0;
@@ -59,6 +74,11 @@ export class BlueBerryService {
     cmd: string,
     args: string[] = [],
   ): Promise<number | null> {
+    if (this.isDryRun()) {
+      this.logCommand(cmd, args);
+      return Promise.resolve(0); // Success in dry-run mode
+    }
+
     return new Promise((resolve, reject) => {
       const child = spawn(cmd, args, {
         env: process.env,
@@ -74,6 +94,22 @@ export class BlueBerryService {
     cmd: string,
     args: string[] = [],
   ): Promise<string> {
+    if (this.isDryRun()) {
+      this.logCommand(cmd, args);
+      // Return mock output for dry-run mode
+      if (cmd === this.XINPUT_CMD && args[0] === "list") {
+        return Promise.resolve(
+          `⎡ Virtual core pointer                    	id=2	[master pointer  (3)]
+⎜   ↳ Virtual core XTEST pointer              	id=4	[slave  pointer  (2)]
+⎜   ↳ Logitech USB Mouse                       	id=9	[slave  pointer  (2)]
+⎣ Virtual core keyboard                   	id=3	[master keyboard (2)]
+    ↳ Virtual core XTEST keyboard             	id=5	[slave  keyboard (3)]
+    ↳ AT Translated Set 2 wired keyboard      	id=10	[slave  keyboard (3)]`,
+        );
+      }
+      return Promise.resolve("");
+    }
+
     return new Promise((resolve, reject) => {
       const child = spawn(cmd, args, {
         env: process.env,
@@ -176,6 +212,8 @@ export class BlueBerryService {
 
   private async loopTask(cyclesLeft: number): Promise<void> {
     const secret = (await this.secretStorage.get("blueberry-secret"))?.trim();
+
+    // If secret is missing during execution, stop (shouldn't happen since we check in start())
     if (!secret || !this.active || cyclesLeft <= 0) {
       if (cyclesLeft <= 0) {
         await this.runCommandAsync(this.LOCK_CMD);
@@ -186,16 +224,40 @@ export class BlueBerryService {
     }
 
     const config = workspace.getConfiguration("blueberry");
+    const dryRun = this.isDryRun();
 
     const wait1 = config.get<number>("napTimeS") ?? 1800;
     const wait2 = config.get<number>("weakTimeS") ?? 0.5;
     const stopAfterCycles = config.get<number>("stopAfterCycles") ?? 0;
 
+    if (dryRun) {
+      const cycleNum =
+        stopAfterCycles > 0 ? stopAfterCycles - cyclesLeft + 1 : "∞";
+      this.loggingService.logInfo(
+        `[BlueBerry] ===== Cycle ${cycleNum} started =====`,
+      );
+    }
+
     const mouseIds = await this.getMouseIds();
     const keyboardIds = await this.getKeyboardIds();
 
+    if (dryRun) {
+      this.loggingService.logInfo(
+        `[BlueBerry] Found ${mouseIds.length} mouse(s): ${mouseIds.join(", ")}`,
+      );
+      this.loggingService.logInfo(
+        `[BlueBerry] Found ${keyboardIds.length} keyboard(s): ${keyboardIds.join(", ")}`,
+      );
+    }
+
     await this.runCommandAsync(this.LOCK_CMD);
     void this.runCommandAsync(this.XSET_CMD, ["dpms", "force", "off"]);
+
+    if (dryRun) {
+      this.loggingService.logInfo(
+        `[BlueBerry] Sleeping for ${wait1}s (napTimeS)...`,
+      );
+    }
     await this.sleep(wait1 * 1000);
     void this.runCommandAsync(this.XSET_CMD, ["dpms", "force", "off"]);
 
@@ -208,11 +270,20 @@ export class BlueBerryService {
     await this.runCommandAsync(this.XDOTOOL_CMD, ["key", "Return"]);
     void this.runCommandAsync(this.XSET_CMD, ["dpms", "force", "off"]);
 
+    if (dryRun) {
+      this.loggingService.logInfo(
+        `[BlueBerry] Sleeping for ${wait2}s (weakTimeS)...`,
+      );
+    }
     await this.sleep(wait2 * 1000);
     void this.runCommandAsync(this.XSET_CMD, ["dpms", "force", "off"]);
 
     await this.enableInputDevices(mouseIds);
     await this.enableInputDevices(keyboardIds);
+
+    if (dryRun) {
+      this.loggingService.logInfo(`[BlueBerry] ===== Cycle completed =====`);
+    }
 
     if (this.active) {
       if (stopAfterCycles > 0) {
@@ -224,10 +295,12 @@ export class BlueBerryService {
   }
 
   async start(): Promise<void> {
+    const dryRun = this.isDryRun();
+
     // Check if required binaries exist
     if (!this.requiredBinariesChecked) {
       const { allPresent, missing } = await this.checkRequiredBinaries();
-      if (!allPresent) {
+      if (!allPresent && !dryRun) {
         window.showErrorMessage(
           `BlueBerry cannot start: Missing required system binaries: ${missing.join(", ")}. ` +
             `Please install them first.`,
@@ -237,11 +310,22 @@ export class BlueBerryService {
       this.requiredBinariesChecked = true;
     }
 
-    let secret = await this.secretStorage.get("blueberry-secret");
+    // Check if secret is set BEFORE starting
+    const secret = (await this.secretStorage.get("blueberry-secret"))?.trim();
     if (!secret) {
-      secret = this.DEFAULT_SECRET;
-      await this.secretStorage.store("blueberry-secret", secret);
-      window.showInformationMessage("BlueBerry is started.");
+      const action = await window.showErrorMessage(
+        "BlueBerry cannot start: Secret is not set. Please set your password to continue.",
+        "Set Secret Now",
+        "Cancel",
+      );
+
+      if (action === "Set Secret Now") {
+        await this.setSecret();
+        window.showInformationMessage(
+          "Secret set! Please start BlueBerry again.",
+        );
+      }
+      return; // Don't start without a secret
     }
 
     if (!this.active) {
@@ -250,11 +334,20 @@ export class BlueBerryService {
       const config = workspace.getConfiguration("blueberry");
       const stopAfterCycles = config.get<number>("stopAfterCycles") ?? 0;
 
+      if (dryRun) {
+        this.loggingService.logInfo("========================================");
+        this.loggingService.logInfo("[BlueBerry] Starting in DRY-RUN mode");
+        this.loggingService.logInfo(
+          `[BlueBerry] Cycles: ${stopAfterCycles || "infinite"}`,
+        );
+        this.loggingService.logInfo("========================================");
+      }
+
       this.currentLoopTask = this.loopTask(stopAfterCycles || Infinity);
       window.showInformationMessage(
         stopAfterCycles > 0
-          ? `BlueBerry started. Will stop after ${stopAfterCycles} cycles.`
-          : "BlueBerry started (infinite cycles).",
+          ? `BlueBerry started${dryRun ? " (DRY-RUN)" : ""}. Will stop after ${stopAfterCycles} cycles.`
+          : `BlueBerry started${dryRun ? " (DRY-RUN)" : ""} (infinite cycles).`,
       );
     }
   }
@@ -286,6 +379,11 @@ export class BlueBerryService {
       await this.secretStorage.store("blueberry-secret", trimmed);
       window.showInformationMessage("Password updated securely.");
     }
+  }
+
+  async clearSecret(): Promise<void> {
+    await this.secretStorage.delete("blueberry-secret");
+    window.showInformationMessage("BlueBerry secret has been cleared.");
   }
 
   async dispose(): Promise<void> {

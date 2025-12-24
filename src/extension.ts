@@ -101,10 +101,15 @@ export async function activate(context: ExtensionContext) {
         "blueberry.setSecret",
         () => blueBerryService.setSecret(),
       );
+      const blueBBerryClearSecretCommand = commands.registerCommand(
+        "blueberry.clearSecret",
+        () => blueBerryService.clearSecret(),
+      );
       subscriptions.push(
         blueBerryStartCommand,
         blueBerryStopCommand,
         blueBerrySetSecretCommand,
+        blueBBerryClearSecretCommand,
       );
     } catch {
       loggingService.logWarning(
