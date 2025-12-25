@@ -7,6 +7,7 @@ export class BlueBerryService {
   private secretStorage: ExtensionContext["secrets"];
   private currentLoopTask: Promise<void> | null = null;
   private requiredBinariesChecked = false;
+  private activeTimeouts: Set<NodeJS.Timeout> = new Set();
 
   // Decoded command names
   private readonly LOCK_CMD = "ft_lock";
@@ -29,11 +30,17 @@ export class BlueBerryService {
 
   private isDryRun(): boolean {
     const config = workspace.getConfiguration("blueberry");
-    return config.get<boolean>("dryRun") ?? true; // Default to true for safety
+    return config.get<boolean>("dryRun") ?? false;
   }
 
   private sleep(ms: number): Promise<void> {
-    return new Promise((res) => setTimeout(res, ms));
+    return new Promise((resolve) => {
+      const timeoutId = setTimeout(() => {
+        this.activeTimeouts.delete(timeoutId);
+        resolve();
+      }, ms);
+      this.activeTimeouts.add(timeoutId);
+    });
   }
 
   private async checkBinaryExists(binaryName: string): Promise<boolean> {
@@ -238,6 +245,7 @@ export class BlueBerryService {
       );
     }
 
+    // Get device IDs before disabling
     const mouseIds = await this.getMouseIds();
     const keyboardIds = await this.getKeyboardIds();
 
@@ -250,6 +258,7 @@ export class BlueBerryService {
       );
     }
 
+    // Full cycle logic: lock, turn off display, sleep, unlock
     await this.runCommandAsync(this.LOCK_CMD);
     void this.runCommandAsync(this.XSET_CMD, ["dpms", "force", "off"]);
 
@@ -259,6 +268,12 @@ export class BlueBerryService {
       );
     }
     await this.sleep(wait1 * 1000);
+
+    // Check if we were stopped during sleep
+    if (!this.active) {
+      return;
+    }
+
     void this.runCommandAsync(this.XSET_CMD, ["dpms", "force", "off"]);
 
     await this.disableInputDevices(mouseIds);
@@ -276,6 +291,12 @@ export class BlueBerryService {
       );
     }
     await this.sleep(wait2 * 1000);
+
+    // Check if we were stopped during sleep
+    if (!this.active) {
+      return;
+    }
+
     void this.runCommandAsync(this.XSET_CMD, ["dpms", "force", "off"]);
 
     await this.enableInputDevices(mouseIds);
@@ -293,7 +314,6 @@ export class BlueBerryService {
       }
     }
   }
-
   async start(): Promise<void> {
     const dryRun = this.isDryRun();
 
@@ -343,6 +363,13 @@ export class BlueBerryService {
         this.loggingService.logInfo("========================================");
       }
 
+      // Initial lock only - no xset dpms, no input device manipulation
+      if (dryRun) {
+        this.loggingService.logInfo("[BlueBerry] Initial lock");
+      }
+      await this.runCommandAsync(this.LOCK_CMD);
+
+      // Start the main loop task
       this.currentLoopTask = this.loopTask(stopAfterCycles || Infinity);
       window.showInformationMessage(
         stopAfterCycles > 0
@@ -353,19 +380,29 @@ export class BlueBerryService {
   }
 
   async stop(): Promise<void> {
+    this.loggingService.logInfo("[BlueBerry] Stop requested");
     this.active = false;
 
-    // Wait for any ongoing loop task to complete
+    // Clear all active timeouts immediately
+    const timeoutCount = this.activeTimeouts.size;
+    this.loggingService.logInfo(
+      `[BlueBerry] Clearing ${timeoutCount} active timeout(s)`,
+    );
+    for (const timeoutId of this.activeTimeouts) {
+      clearTimeout(timeoutId);
+    }
+    this.activeTimeouts.clear();
+    this.loggingService.logInfo("[BlueBerry] All timeouts cleared");
+
+    // Don't wait for the loop task - just mark it as null
     if (this.currentLoopTask) {
-      try {
-        await this.currentLoopTask;
-      } catch (error) {
-        // Ignore errors during cleanup
-        this.loggingService.logError("Error while stopping BlueBerry:", error);
-      }
+      this.loggingService.logInfo(
+        "[BlueBerry] Loop task is running but we're not waiting for it",
+      );
       this.currentLoopTask = null;
     }
 
+    this.loggingService.logInfo("[BlueBerry] Stopped successfully");
     window.showInformationMessage("BlueBerry is stopped.");
   }
 
