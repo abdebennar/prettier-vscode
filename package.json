@@ -406,25 +406,25 @@
           "markdownDescription": "%ext.config.experimentalOperatorPosition%",
           "scope": "language-overridable"
         },
-        "blueberry.napTimeS": {
-          "type": "number",
-          "default": 1800,
-          "description": "Seconds for long nap time (default: 1800s / 30min)"
+        "blueberry.duration": {
+          "type": "string",
+          "default": "1h",
+          "description": "Total duration to keep BlueBerry running. Supports: h (hours), m (minutes), s (seconds). Examples: '1h' = 1 hour, '30m' = 30 minutes, '90s' = 90 seconds, '1.5h' = 1.5 hours"
         },
-        "blueberry.weakTimeS": {
-          "type": "number",
-          "default": 0.5,
-          "description": "Seconds for short wake time (default: 0.5s)"
+        "blueberry.lockIntervalMin": {
+          "type": "string",
+          "default": "10m",
+          "description": "Minimum time before re-locking (max 30m). Supports: h (hours), m (minutes), s (seconds). Examples: '10m', '600s', '0.16h'"
         },
-        "blueberry.stopAfterCycles": {
-          "type": "number",
-          "default": 0,
-          "description": "Repeat napTimeS x times (0 = infinite)"
+        "blueberry.lockIntervalMax": {
+          "type": "string",
+          "default": "20m",
+          "description": "Maximum time before re-locking (max 30m). Supports: h (hours), m (minutes), s (seconds). Set same as min for fixed interval. Examples: '20m', '1200s', '0.33h'"
         },
         "blueberry.dryRun": {
           "type": "boolean",
-          "default": true,
-          "description": "When enabled, commands are logged to a terminal instead of being executed (default: true for safety)"
+          "default": false,
+          "description": "When enabled, commands are logged to a terminal instead of being executed (default: false)"
         }
       }
     },
